@@ -81,6 +81,25 @@ bool update_events() {
 	
 			case SDL_QUIT:
 				return false;
+
+			case SDL_KEYDOWN:
+				switch (sdl_event.key.keysym.sym) {
+
+					case SDLK_w:
+						std::cout<<"w"<<std::endl;
+						break;
+					case SDLK_a:
+						std::cout<<"a"<<std::endl;
+						break;
+					case SDLK_s:
+						std::cout<<"s"<<std::endl;
+						break;
+					case SDLK_d:
+						std::cout<<"d"<<std::endl;
+						break;
+				}
+			break;
+
 		}
 	}
 
