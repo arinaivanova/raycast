@@ -1,6 +1,11 @@
 #include <cstdint>
 #include <iostream>
+#include <algorithm>
+#include <cmath>
 #include <SDL2/SDL.h>
+
+#include "rc_math.h"
+#include "rc_util.h"
 
 typedef uint32_t uint32;
 typedef uint8_t uint8;
@@ -10,11 +15,28 @@ void update_graphics();
 bool update_events();
 void quit();
 
-int sdl_width = 800;
-int sdl_height = 600;
+const int sdl_width = 800, sdl_height = 600;
 
 SDL_Window *sdl_window;
 SDL_Surface *sdl_surface;
+
+// camera coordinates and orientation
+rc::vec2d pos = {2.0, 5.0};
+rc::vec2d dir = {1.0, 0.0};
+const double fov = M_PI/2;
+
+const int map_w = 6, map_h = 6;
+// 1 = wall square, 0 = floor
+int map[6][6] = {
+	{1, 1, 1, 1, 1, 1},
+	{1, 0, 0, 0, 0, 1},
+	{1, 0, 1, 1, 0, 1},
+	{1, 0, 0, 0, 0, 1},
+	{1, 0, 0, 0, 0, 1},
+	{1, 1, 1, 1, 1, 1},
+};
+// voxel width
+const int vox_w = 1;
 
 int main() {
 
@@ -48,6 +70,9 @@ void init() {
 	sdl_surface = SDL_GetWindowSurface(sdl_window);
 	SDL_BlitSurface(tmp, 0, sdl_surface, 0);
 	SDL_FreeSurface(tmp);
+
+	// load textures
+	//map_surface = SDL_LoadBMP("map.bmp");
 }
 
 void update_graphics() {
@@ -57,14 +82,9 @@ void update_graphics() {
 
 	uint32 *pixel = (uint32*)sdl_surface->pixels;
 	
-	for (int row = 0; row < sdl_height; ++row) {
-		for (int col = 0; col < sdl_width; ++col, ++pixel) {
+	// clear pixel buffer
+	memset(pixel, 0, sdl_surface->pitch*sdl_height);
 
-			uint8 r = 255.0/sdl_height*row, g = 255.0/sdl_width*col, b = 0, a = 255;
-
-			*pixel = (a << 24) | (r << 16) | (g << 8) | b;
-		}
-	}
 
 	if (SDL_MUSTLOCK(sdl_surface)) 
 		SDL_UnlockSurface(sdl_surface);
@@ -85,17 +105,20 @@ bool update_events() {
 			case SDL_KEYDOWN:
 				switch (sdl_event.key.keysym.sym) {
 
-					case SDLK_w:
-						std::cout<<"w"<<std::endl;
-						break;
 					case SDLK_a:
-						std::cout<<"a"<<std::endl;
+						dir = rc::rot(dir, M_PI/12);
 						break;
-					case SDLK_s:
-						std::cout<<"s"<<std::endl;
-						break;
+
 					case SDLK_d:
-						std::cout<<"d"<<std::endl;
+						dir = rc::rot(dir, -M_PI/12);
+						break;
+
+					case SDLK_w:
+						pos = rc::bound(pos + dir*0.2, 0, 0, map_w, map_h);
+						break;
+
+					case SDLK_s:
+						pos = rc::bound(pos - dir*0.2, 0, 0, map_w, map_h);
 						break;
 				}
 			break;
