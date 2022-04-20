@@ -43,7 +43,7 @@ namespace rc {
 
 	vec2d rot(const vec2d &v, double theta) {
 
-		double c = cos(theta), s = sin(theta);
+		const double c = cos(theta), s = sin(theta);
 		return {
 			v.x*c-v.y*s,
 			v.x*s+v.y*c

@@ -21,7 +21,8 @@ namespace rc {
 
 	inline uint32 color(uint8 r, uint8 g, uint8 b) {
 
-		return (255 << 24) | (r << 16) | (g << 8) | b;
+		const uint8 a = 255;
+		return (a << 24) | (r << 16) | (g << 8) | b;
 	}
 }
 

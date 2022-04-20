@@ -1,45 +1,60 @@
 #include <cstdint>
 #include <iostream>
 #include <algorithm>
+#include <vector>
 #include <cmath>
 #include <chrono>
+
 #include <SDL2/SDL.h>
 
 #include "rc_math.h"
 #include "rc_util.h"
 
+namespace rc {
+
+	template <size_t H, size_t W>
+	struct map {
+
+		const int w, h;
+		double vox_w;
+
+		std::vector<std::vector<size_t>> vox;
+
+		map() : w(W), h(H), vox_w(1.0) {}
+	};
+}
+
 void init();
+template <size_t H, size_t W>
+rc::vec2d ray_vox_int(const rc::vec2d &ray_dir, const rc::map<H, W> &map); // ray-voxel intersection
 void update_graphics();
 bool update_events(double d_time);
 void quit();
 
 const int sdl_width = 600, sdl_height = 600;
+// camera coordinates and orientation
+rc::vec2d pos = {1, 2.5};
+//rc::vec2d dir = {cos(M_PI/4), sin(M_PI/4)};
+rc::vec2d dir = {1, 0};
+const double fov = M_PI*0.5;
+rc::map<6, 6> world_map;
 
 SDL_Window *sdl_window;
 SDL_Surface *sdl_surface;
 
-// camera coordinates and orientation
-rc::vec2d pos = {3, 3};
-rc::vec2d dir = {cos(M_PI/4), sin(M_PI/4)};
-
-const double fov = M_PI*0.5;
-
-const int map_w = 6, map_h = 6;
-// 1 = wall square, 0 = floor
-int map[6][6] = {
-	{1, 1, 1, 1, 1, 1},
-	{1, 0, 0, 0, 0, 1},
-	{1, 0, 1, 1, 0, 1},
-	{1, 0, 0, 0, 0, 1},
-	{1, 0, 0, 0, 0, 1},
-	{1, 1, 1, 1, 1, 1},
-};
-// voxel width
-const int vox_w = 1;
-
 int main() {
 
 	init();
+
+	// 1 = wall square, 0 = floor
+	world_map.vox = {
+		{1, 1, 1, 1, 1, 1},
+		{1, 0, 0, 0, 0, 1},
+		{1, 0, 1, 1, 0, 1},
+		{1, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 1},
+		{1, 1, 1, 1, 1, 1},
+	};
 
 	auto time_prev = std::chrono::high_resolution_clock::now();
 	// time (seconds) per current frame
@@ -49,6 +64,7 @@ int main() {
 
   		update_graphics();
 
+  		// update frame time
   		auto time_cur = std::chrono::high_resolution_clock::now();
   		d_time = std::chrono::duration_cast<std::chrono::microseconds>(time_cur - time_prev).count() * 1e-6;
   		time_prev = time_cur;
@@ -82,6 +98,36 @@ void init() {
 	//map_surface = SDL_LoadBMP("map.bmp");
 }
 
+template <size_t H, size_t W>
+rc::vec2d ray_vox_int(const rc::vec2d &ray_dir, const rc::map<H, W> &map) {
+
+	rc::vec2d ray;
+
+	// initial ray step inside camera position voxel
+	{
+		rc::vec2d d = {
+			(int)pos.x - pos.x + map.vox_w*(ray_dir.x > 0),
+			(int)pos.y - pos.y + map.vox_w*(ray_dir.y > 0)
+		};
+		double d1 = d.x/ray_dir.x;
+		double d2 = d.y/ray_dir.y;
+
+		if (d1>d2)
+			d.x = d2*ray_dir.x;
+		else
+			d.y = d1*ray_dir.y;
+
+		ray = d;
+	}
+
+	// step ray until wall is hit from closest outside camera voxel; assumes wall surrounds map
+	{
+		//...
+	}
+
+	return ray;
+}
+
 void update_graphics() {
 
 	if (SDL_MUSTLOCK(sdl_surface))
@@ -92,36 +138,16 @@ void update_graphics() {
 	// clear pixel buffer
 	memset(pixel, 0, sdl_surface->pitch*sdl_height);
 
-	// draw walls around voxel of camera position
+	// cast ray into map through each column of screen until wall is hit
 	for (int col = 0; col < sdl_width; ++col) {
 
-		const rc::vec2d ray_dir = rc::rot(dir, (fov/sdl_width) * (col - sdl_width*0.5));
-
-		rc::vec2d ray = {0, 0};
-		double dist = 0;
-
-		double d_x = (int)pos.x - pos.x;
-		if (ray_dir.x > 0)
-			d_x += vox_w;
-		double d_y = (int)pos.y - pos.y;
-		if (ray_dir.y > 0)
-			d_y += vox_w;
-		double d1 = d_x/ray_dir.x;
-		double d2 = d_y/ray_dir.y;
-
-		if (d1>d2) {
-			dist += d2;
-			d_x = d2*ray_dir.x;
-		} else {
-			dist += d1;
-			d_y = d1*ray_dir.y;
-		}
-
-		ray += (rc::vec2d) {d_x, d_y};
+		const double d_angle = fov/sdl_width;
+		const rc::vec2d ray_dir = rc::rot(dir, d_angle * (col - sdl_width*0.5));
+		const rc::vec2d ray = ray_vox_int(ray_dir, world_map);
+		const double dist = rc::mag(ray);
 
 		// draw wall
-
-		double perp_dist = abs(ray_dir.x*dist);
+		double perp_dist = abs(ray_dir.x * dist);
 		double wall_height = std::min(1.0*sdl_height, sdl_height*0.5 / perp_dist);
 
 		for(int row = (sdl_height-wall_height)*0.5; row < (sdl_height+wall_height)*0.5; ++row) {
@@ -163,11 +189,11 @@ bool update_events(double d_time) {
 						break;
 
 					case SDLK_w:
-						pos = rc::bound(pos + dir*move_speed, 0, 0, map_w, map_h);
+						pos = rc::bound(pos + dir*move_speed, 0, 0, world_map.w-1, world_map.h-1);
 						break;
 
 					case SDLK_s:
-						pos = rc::bound(pos - dir*move_speed, 0, 0, map_w, map_h);
+						pos = rc::bound(pos - dir*move_speed, 0, 0, world_map.w-1, world_map.h-1);
 						break;
 				}
 			break;
