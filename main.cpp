@@ -2,28 +2,27 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <SDL2/SDL.h>
 
 #include "rc_math.h"
 #include "rc_util.h"
 
-typedef uint32_t uint32;
-typedef uint8_t uint8;
-
 void init();
 void update_graphics();
-bool update_events();
+bool update_events(double d_time);
 void quit();
 
-const int sdl_width = 800, sdl_height = 600;
+const int sdl_width = 600, sdl_height = 600;
 
 SDL_Window *sdl_window;
 SDL_Surface *sdl_surface;
 
 // camera coordinates and orientation
-rc::vec2d pos = {2.0, 5.0};
-rc::vec2d dir = {1.0, 0.0};
-const double fov = M_PI/2;
+rc::vec2d pos = {3, 3};
+rc::vec2d dir = {cos(M_PI/4), sin(M_PI/4)};
+
+const double fov = M_PI*0.5;
 
 const int map_w = 6, map_h = 6;
 // 1 = wall square, 0 = floor
@@ -42,9 +41,17 @@ int main() {
 
 	init();
 
-  	while (update_events()) {
+	auto time_prev = std::chrono::high_resolution_clock::now();
+	// time (seconds) per current frame
+	double d_time = 0;
+
+  	while (update_events(d_time)) {
 
   		update_graphics();
+
+  		auto time_cur = std::chrono::high_resolution_clock::now();
+  		d_time = std::chrono::duration_cast<std::chrono::microseconds>(time_cur - time_prev).count() * 1e-6;
+  		time_prev = time_cur;
   	}
 
   	quit();
@@ -85,6 +92,43 @@ void update_graphics() {
 	// clear pixel buffer
 	memset(pixel, 0, sdl_surface->pitch*sdl_height);
 
+	// draw walls around voxel of camera position
+	for (int col = 0; col < sdl_width; ++col) {
+
+		const rc::vec2d ray_dir = rc::rot(dir, (fov/sdl_width) * (col - sdl_width*0.5));
+
+		rc::vec2d ray = {0, 0};
+		double dist = 0;
+
+		double d_x = (int)pos.x - pos.x;
+		if (ray_dir.x > 0)
+			d_x += vox_w;
+		double d_y = (int)pos.y - pos.y;
+		if (ray_dir.y > 0)
+			d_y += vox_w;
+		double d1 = d_x/ray_dir.x;
+		double d2 = d_y/ray_dir.y;
+
+		if (d1>d2) {
+			dist += d2;
+			d_x = d2*ray_dir.x;
+		} else {
+			dist += d1;
+			d_y = d1*ray_dir.y;
+		}
+
+		ray += (rc::vec2d) {d_x, d_y};
+
+		// draw wall
+
+		double perp_dist = abs(ray_dir.x*dist);
+		double wall_height = std::min(1.0*sdl_height, sdl_height*0.5 / perp_dist);
+
+		for(int row = (sdl_height-wall_height)*0.5; row < (sdl_height+wall_height)*0.5; ++row) {
+
+			pixel[row*sdl_width+col] = rc::color(255, 0, 0);
+		}
+	}
 
 	if (SDL_MUSTLOCK(sdl_surface)) 
 		SDL_UnlockSurface(sdl_surface);
@@ -92,10 +136,11 @@ void update_graphics() {
 	SDL_UpdateWindowSurface(sdl_window);
 }
 
-bool update_events() {
+bool update_events(double d_time) {
 
 	SDL_Event sdl_event;
 	// process event queue
+
 	while (SDL_PollEvent(&sdl_event)) {
 		switch (sdl_event.type) {
 	
@@ -103,22 +148,26 @@ bool update_events() {
 				return false;
 
 			case SDL_KEYDOWN:
+
+				const double rot_speed = 9*d_time;
+				const double move_speed = 8*d_time;
+
 				switch (sdl_event.key.keysym.sym) {
 
 					case SDLK_a:
-						dir = rc::rot(dir, M_PI/12);
+						dir = rc::rot(dir, -rot_speed);
 						break;
 
 					case SDLK_d:
-						dir = rc::rot(dir, -M_PI/12);
+						dir = rc::rot(dir, rot_speed);
 						break;
 
 					case SDLK_w:
-						pos = rc::bound(pos + dir*0.2, 0, 0, map_w, map_h);
+						pos = rc::bound(pos + dir*move_speed, 0, 0, map_w, map_h);
 						break;
 
 					case SDLK_s:
-						pos = rc::bound(pos - dir*0.2, 0, 0, map_w, map_h);
+						pos = rc::bound(pos - dir*move_speed, 0, 0, map_w, map_h);
 						break;
 				}
 			break;

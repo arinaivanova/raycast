@@ -23,6 +23,15 @@ namespace rc {
 			return { x*n, y*n };
 		}
 
+		vec2d operator / (double n) const {
+			assert(n != 0);
+			return { x / n, y / n };
+		}
+
+		bool operator == (const vec2d &v) const {
+			return v.x == x && v.y == y;
+		}
+
 		void operator += (const vec2d &v) {
 			x += v.x, y += v.y;
 		}
@@ -33,10 +42,22 @@ namespace rc {
 	};
 
 	vec2d rot(const vec2d &v, double theta) {
+
+		double c = cos(theta), s = sin(theta);
 		return {
-			cos(theta)*v.x-sin(theta)*v.y,
-			sin(theta)*v.x+cos(theta)*v.y
+			v.x*c-v.y*s,
+			v.x*s+v.y*c
 		};
+	}
+
+	double mag(const vec2d &v) {
+
+		return sqrt(v.x*v.x+v.y*v.y);
+	}
+
+	vec2d normalize(const vec2d &v) {
+
+		return v/mag(v);
 	}
 }
 
