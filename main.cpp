@@ -16,11 +16,10 @@ namespace rc {
 	struct map {
 
 		const int w, h;
-		double vox_w;
 
 		std::vector<std::vector<size_t>> vox;
 
-		map() : w(W), h(H), vox_w(1.0) {}
+		map() : w(W), h(H) {}
 	};
 }
 
@@ -101,31 +100,39 @@ void init() {
 template <size_t H, size_t W>
 rc::vec2d ray_vox_int(const rc::vec2d &ray_dir, const rc::map<H, W> &map) {
 
-	rc::vec2d ray;
+	const double tan = ray_dir.y / ray_dir.x;
+	// lengths of rays when stepping 1 voxel width along each axis
+	const rc::vec2d len = {
+		1 / abs(ray_dir.x),
+		1 / abs(ray_dir.y)
+	};
+	// ray position in world coords
+	rc::vec2d ray_world = { (int)pos.x*1.0, (int)pos.y*1.0 };
+	// cumulative lengths; initially length when stepping to closest voxel edge along each axis
+	rc::vec2d len_sum = {
+		(ray_world.x - pos.x + (ray_dir.x > 0)) * len.x,
+		(ray_world.y - pos.y + (ray_dir.y > 0)) * len.y
+	};
+	// 1 voxel width step along each axis
+	const rc::vec2d d = {
+		ray_dir.x > 0 ? 1.0 : -1.0,
+		ray_dir.y > 0 ? 1.0 : -1.0
+	};
 
-	// initial ray step inside camera position voxel
-	{
-		rc::vec2d d = {
-			(int)pos.x - pos.x + map.vox_w*(ray_dir.x > 0),
-			(int)pos.y - pos.y + map.vox_w*(ray_dir.y > 0)
-		};
-		double d1 = d.x/ray_dir.x;
-		double d2 = d.y/ray_dir.y;
+	// step ray until wall is hit; assumes wall surrounds map
+	while (rc::in_bound(ray_world, 0,0, world_map.w,world_map.h)
+		&& world_map.vox[(int)ray_world.y][(int)ray_world.x] == 0) {
 
-		if (d1>d2)
-			d.x = d2*ray_dir.x;
-		else
-			d.y = d1*ray_dir.y;
-
-		ray = d;
+		if (len_sum.x <= len_sum.y) {
+			len_sum.x += len.x;
+			ray_world.x += d.x;
+		} else {
+			len_sum.y += len.y;
+			ray_world.y += d.y;
+		}
 	}
 
-	// step ray until wall is hit from closest outside camera voxel; assumes wall surrounds map
-	{
-		//...
-	}
-
-	return ray;
+	return ray_world;
 }
 
 void update_graphics() {
@@ -144,7 +151,7 @@ void update_graphics() {
 		const double d_angle = fov/sdl_width;
 		const rc::vec2d ray_dir = rc::rot(dir, d_angle * (col - sdl_width*0.5));
 		const rc::vec2d ray = ray_vox_int(ray_dir, world_map);
-		const double dist = rc::mag(ray);
+		/*const double dist = rc::mag(ray - pos);
 
 		// draw wall
 		double perp_dist = abs(ray_dir.x * dist);
@@ -154,6 +161,7 @@ void update_graphics() {
 
 			pixel[row*sdl_width+col] = rc::color(255, 0, 0);
 		}
+		*/
 	}
 
 	if (SDL_MUSTLOCK(sdl_surface)) 
@@ -175,8 +183,8 @@ bool update_events(double d_time) {
 
 			case SDL_KEYDOWN:
 
-				const double rot_speed = 9*d_time;
-				const double move_speed = 8*d_time;
+				const double rot_speed = 14*d_time;
+				const double move_speed = 12*d_time;
 
 				switch (sdl_event.key.keysym.sym) {
 
