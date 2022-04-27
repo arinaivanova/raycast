@@ -24,18 +24,17 @@ namespace rc {
 }
 
 void init();
-template <size_t H, size_t W>
-rc::vec2d ray_vox_int(const rc::vec2d &ray_dir, const rc::map<H, W> &map); // ray-voxel intersection
+//template <size_t H, size_t W> rc::vec2d ray_vox_int(const rc::vec2d &ray_dir, const rc::map<H, W> &map); // ray-voxel intersection
 void update_graphics();
 bool update_events(double d_time);
 void quit();
 
 const int sdl_width = 600, sdl_height = 600;
 // camera coordinates and orientation
-rc::vec2d pos = {1, 2.5};
+rc::vec2d pos = {2, 3};
 //rc::vec2d dir = {cos(M_PI/4), sin(M_PI/4)};
-rc::vec2d dir = {1, 0};
-const double fov = M_PI*0.5;
+rc::vec2d dir = {-1, 0};
+const double fov = M_PI*0.25;
 rc::map<6, 6> world_map;
 
 SDL_Window *sdl_window;
@@ -48,8 +47,8 @@ int main() {
 	// 1 = wall square, 0 = floor
 	world_map.vox = {
 		{1, 1, 1, 1, 1, 1},
+		{1, 0, 0, 0, 1, 1},
 		{1, 0, 0, 0, 0, 1},
-		{1, 0, 1, 1, 0, 1},
 		{1, 0, 0, 0, 0, 1},
 		{1, 0, 0, 0, 0, 1},
 		{1, 1, 1, 1, 1, 1},
@@ -97,44 +96,6 @@ void init() {
 	//map_surface = SDL_LoadBMP("map.bmp");
 }
 
-template <size_t H, size_t W>
-rc::vec2d ray_vox_int(const rc::vec2d &ray_dir, const rc::map<H, W> &map) {
-
-	const double tan = ray_dir.y / ray_dir.x;
-	// lengths of rays when stepping 1 voxel width along each axis
-	const rc::vec2d len = {
-		1 / abs(ray_dir.x),
-		1 / abs(ray_dir.y)
-	};
-	// ray position in world coords
-	rc::vec2d ray_world = { (int)pos.x*1.0, (int)pos.y*1.0 };
-	// cumulative lengths; initially length when stepping to closest voxel edge along each axis
-	rc::vec2d len_sum = {
-		(ray_world.x - pos.x + (ray_dir.x > 0)) * len.x,
-		(ray_world.y - pos.y + (ray_dir.y > 0)) * len.y
-	};
-	// 1 voxel width step along each axis
-	const rc::vec2d d = {
-		ray_dir.x > 0 ? 1.0 : -1.0,
-		ray_dir.y > 0 ? 1.0 : -1.0
-	};
-
-	// step ray until wall is hit; assumes wall surrounds map
-	while (rc::in_bound(ray_world, 0,0, world_map.w,world_map.h)
-		&& world_map.vox[(int)ray_world.y][(int)ray_world.x] == 0) {
-
-		if (len_sum.x <= len_sum.y) {
-			len_sum.x += len.x;
-			ray_world.x += d.x;
-		} else {
-			len_sum.y += len.y;
-			ray_world.y += d.y;
-		}
-	}
-
-	return ray_world;
-}
-
 void update_graphics() {
 
 	if (SDL_MUSTLOCK(sdl_surface))
@@ -145,23 +106,63 @@ void update_graphics() {
 	// clear pixel buffer
 	memset(pixel, 0, sdl_surface->pitch*sdl_height);
 
+	const double d_angle = fov/sdl_width;
 	// cast ray into map through each column of screen until wall is hit
 	for (int col = 0; col < sdl_width; ++col) {
 
-		const double d_angle = fov/sdl_width;
-		const rc::vec2d ray_dir = rc::rot(dir, d_angle * (col - sdl_width*0.5));
-		const rc::vec2d ray = ray_vox_int(ray_dir, world_map);
-		/*const double dist = rc::mag(ray - pos);
+		const double ray_angle = d_angle * (col - sdl_width*0.5);
+		const rc::vec2d ray_dir = rc::rot(dir, ray_angle);
+
+		// initial ray step to first axis intersection in each direction
+		const double tan = ray_dir.y / ray_dir.x;
+
+		// lengths of rays when stepping 1 voxel width (assuming =1) along each axis
+		const rc::vec2d len = {
+			1 / abs(ray_dir.x),
+			1 / abs(ray_dir.y)
+		};
+
+		// ray position in world space 
+		rc::vec2d ray_world = { (int)pos.x*1.0, (int)pos.y*1.0 };
+
+		// cumulative lengths of rays; initially distance to next voxel edge
+		rc::vec2d len_sum = {
+			(ray_world.x - pos.x + (ray_dir.x > 0)) * len.x,
+			(ray_world.y - pos.y + (ray_dir.y > 0)) * len.y
+		};
+
+		// voxel width step distance (+1 or -1 if voxel width=1)
+		const rc::vec2d d = {
+			len.x * ray_dir.x,
+			len.y * ray_dir.y
+		};
+
+		// last incremented length
+		bool y_last = false;
+		// step ray until wall is hit from closest outside camera voxel; assumes wall surrounds map
+		while (rc::in_bound(ray_world, 0,0, world_map.w,world_map.h)
+			&& world_map.vox[(int)(ray_world.y)][(int)(ray_world.x)] == 0) {
+
+			if (len_sum.x <= len_sum.y) {
+				len_sum.x += len.x;
+				ray_world.x += d.x;
+				y_last = false;
+			} else {
+				len_sum.y += len.y;
+				ray_world.y += d.y;
+				y_last = true;
+			}
+		}
 
 		// draw wall
-		double perp_dist = abs(ray_dir.x * dist);
-		double wall_height = std::min(1.0*sdl_height, sdl_height*0.5 / perp_dist);
+		double dist = y_last ? len_sum.y - len.y : len_sum.x - len.x; // move one length back (closest wall)
+		const double perp_dist = abs(cos(d_angle) * dist); // perpendicular distance to camera plane
+		const double wall_height = std::min(1.0*sdl_height, sdl_height*0.5 / perp_dist);
 
 		for(int row = (sdl_height-wall_height)*0.5; row < (sdl_height+wall_height)*0.5; ++row) {
 
-			pixel[row*sdl_width+col] = rc::color(255, 0, 0);
+			pixel[row*sdl_width+col] = rc::color(y_last ? 125 : 255, 0, 0);
 		}
-		*/
 	}
 
 	if (SDL_MUSTLOCK(sdl_surface)) 

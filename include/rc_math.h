@@ -7,10 +7,6 @@ namespace rc {
 
 		double x, y;
 
-		vec2d operator - () {
-			return { -x, -y };
-		}
-
 		vec2d operator + (const vec2d &v) const {
 			return { v.x + x, v.y + y };
 		}
